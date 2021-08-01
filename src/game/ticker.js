@@ -1,5 +1,4 @@
 let startTime = Date.now()
-
 function handleTicker() {
     tickers.forEach(ticker => {
         ticker(Date.now() - startTime)
@@ -8,7 +7,6 @@ function handleTicker() {
     requestAnimationFrame(handleTicker)
 }
 requestAnimationFrame(handleTicker)
-
 const tickers = []
 export function addTicker(ticker) {
     tickers.push(ticker)
