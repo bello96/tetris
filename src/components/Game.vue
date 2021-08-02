@@ -1,10 +1,10 @@
 <template>
   <div>
-    <div class="row" v-for="i in gameRow" :key="i">
-      <div v-for="j in gameCol" :key="j">
+    <span class="row" v-for="i in gameRow" :key="i">
+      <template v-for="j in gameCol" :key="j">
         <Lattice :type="map[i - 1][j - 1]" />
-      </div>
-    </div>
+      </template>
+    </span>
   </div>
 </template>
 

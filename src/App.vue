@@ -8,7 +8,7 @@ import Game from "./components/Game.vue";
 
 <style>
 #app {
-  margin-top: 20px;
+  margin: 0 auto;
   display: flex;
   justify-content: center;
 }

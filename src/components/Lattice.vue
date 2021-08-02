@@ -1,5 +1,5 @@
 <template>
-  <div class="lattice"></div>
+  <i class="lattice"></i>
 </template>
 
 <script setup>
@@ -7,7 +7,8 @@ import { computed } from "vue";
 const props = defineProps(["type"]);
 const bgColorType = {
   [0]: "#DEE1E6",
-  [1]: "#1488F5",
+  [1]: "#2C313C",
+  [-1]: "#2C313C",
 };
 const bgColor = computed(() => bgColorType[props.type]);
 </script>
@@ -17,12 +18,8 @@ const bgColor = computed(() => bgColorType[props.type]);
   width: 20px;
   height: 20px;
   background-color: v-bind(bgColor);
-  margin-bottom: 0.8px;
-  margin-right: 0.8px;
-  border-radius: 1.5px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  margin: 0 1px 1px 0;
+  border-radius: 2px;
   transition: all 0.1s;
 }
 </style>
