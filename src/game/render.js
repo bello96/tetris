@@ -10,7 +10,10 @@ function _render(box, map) {
         for (let j = 0; j < col; j++) {
             const x = box.x + j;
             const y = box.y + i;
-            map[y][x] = 1
+            if (box.shape[i][j] > 0) {
+                map[y][x] = 1
+            }
+           
         }
     }
 }

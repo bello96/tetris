@@ -12,7 +12,7 @@
 import { reactive } from "vue";
 import Lattice from "./Lattice.vue";
 import { gameRow, gameCol, startGame } from "./../game";
-const map = reactive({});
+const map = reactive([]);
 startGame(map);
 </script>
 

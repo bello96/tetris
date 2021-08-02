@@ -16,7 +16,36 @@ export function addBoxToMap(box,map) {
         for (let j = 0; j < col; j++){                  
             const x = box.x + j     
             const y = box.y + i
-            map[y][x] = -1 
+            if (box.shape[i][j] > 0) {
+                map[y][x] = -1 
+            }
+            
         }  
     }
+}
+
+export function eliminate(map) {
+    const lines = getCanEliminateLines(map)
+    _eliminate(lines,map)
+   
+}
+
+function _eliminate(lines, map) {
+    const col = map[0].length
+    lines.forEach(i => {
+        map.splice(i, 1)
+        map.unshift(new Array(col).fill(0))
+    });
+}
+
+function getCanEliminateLines(map) {
+    return map.reduce((r, col,i) => {
+        const boo = col.every(v => {
+            return v === -1
+        })
+        if (boo) {
+            r.push(i)
+        }
+        return r
+    }, [])
 }

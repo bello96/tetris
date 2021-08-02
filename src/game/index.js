@@ -1,20 +1,21 @@
 export * from './config'
 import { hitBottomBorder, hitBottomBox } from './hit'
-import { initMap, addBoxToMap } from './map'
+import { initMap, addBoxToMap,eliminate } from './map'
 import { render } from './render'
 import { addTicker } from './ticker'
 import { intervalTimer } from './utils'
-import { Box } from './box'
+import { createBox } from './box'
 
 export function startGame(map) {
     initMap(map)
     const isDownMown = intervalTimer()
-    let activeBox = new Box()
+    let activeBox = createBox()
     function handleTicker(n) {
         if (isDownMown(n, 1000)) {
             if (hitBottomBorder(activeBox) || hitBottomBox(activeBox, map)) {
                 addBoxToMap(activeBox, map)
-                activeBox = new Box()
+                eliminate(map)
+                activeBox = createBox()
                 return
             }
             activeBox.y++
@@ -22,8 +23,16 @@ export function startGame(map) {
         render(activeBox, map)
     }
     window.addEventListener('keydown', e => {
-        if (e.code === 'ArrowDown') {
-            activeBox.y++
+        switch (e.code) {
+            case 'ArrowLeft':
+                activeBox.x--
+                break;
+            case 'ArrowRight':
+                activeBox.x++
+                break;
+            case 'ArrowDown':
+                activeBox.y++
+                break;
         }
     })
     addTicker(handleTicker)
