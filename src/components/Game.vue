@@ -1,8 +1,8 @@
 <template>
   <div>
-    <span class="row" v-for="i in gameRow" :key="i">
-      <template v-for="j in gameCol" :key="j">
-        <Lattice :type="map[i - 1][j - 1]" />
+    <span class="row" v-for="(row, rIndex) in gameRow" :key="rIndex">
+      <template v-for="(col, cIndex) in gameCol" :key="cIndex">
+        <Lattice :type="map[rIndex][cIndex]"></Lattice>
       </template>
     </span>
   </div>
