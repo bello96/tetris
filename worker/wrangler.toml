@@ -1,0 +1,17 @@
+name = "tetris-worker"
+main = "src/index.ts"
+compatibility_date = "2024-12-05"
+workers_dev = true
+
+routes = [
+  { pattern = "tetris.dengjiabei.cn/api/*", zone_name = "dengjiabei.cn" }
+]
+
+[durable_objects]
+bindings = [
+  { name = "TETRIS_ROOM", class_name = "TetrisRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TetrisRoom"]
