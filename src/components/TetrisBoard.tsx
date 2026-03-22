@@ -40,12 +40,12 @@ export default function TetrisBoard({
     canvas.height = height * dpr;
     ctx.scale(dpr, dpr);
 
-    // 背景
-    ctx.fillStyle = "#1e1b2e";
+    // 浅色背景
+    ctx.fillStyle = "#f0f0f8";
     ctx.fillRect(0, 0, width, height);
 
     // 网格线
-    ctx.strokeStyle = "rgba(255,255,255,0.04)";
+    ctx.strokeStyle = "rgba(0,0,0,0.06)";
     ctx.lineWidth = 1;
     for (let r = 0; r <= BOARD_ROWS; r++) {
       ctx.beginPath();
@@ -78,7 +78,7 @@ export default function TetrisBoard({
       ctx.fillStyle = color;
       ctx.fillRect(x + inset, y + inset, s - inset * 2, s - inset * 2);
       // 高光
-      ctx.fillStyle = "rgba(255,255,255,0.2)";
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
       ctx.fillRect(x + inset, y + inset, s - inset * 2, 2);
       ctx.fillRect(x + inset, y + inset, 2, s - inset * 2);
       // 阴影
@@ -116,7 +116,7 @@ export default function TetrisBoard({
         );
         for (const [gr, gc] of ghostCells) {
           if (gr >= 0 && gr < BOARD_ROWS) {
-            drawCell(gr, gc, currentPiece.type + 1, 0.2);
+            drawCell(gr, gc, currentPiece.type + 1, 0.12);
           }
         }
       }
@@ -139,9 +139,9 @@ export default function TetrisBoard({
 
     // 游戏结束遮罩
     if (gameOver) {
-      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
       ctx.fillRect(0, 0, width, height);
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = "#4f46e5";
       ctx.font = `bold ${cellSize * 1.2}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -155,10 +155,10 @@ export default function TetrisBoard({
       style={{
         width,
         height,
-        borderRadius: 4,
+        borderRadius: 8,
         border: isMe
           ? "3px solid #6366f1"
-          : "2px solid rgba(107,114,128,0.5)",
+          : "2px solid rgba(107,114,128,0.3)",
       }}
     />
   );

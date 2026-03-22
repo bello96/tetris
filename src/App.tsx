@@ -40,6 +40,7 @@ export default function App() {
   const [nicknameInput, setNicknameInput] = useState("");
   const [urlError, setUrlError] = useState("");
   const [pendingError, setPendingError] = useState("");
+  const [pendingOwnerName, setPendingOwnerName] = useState<string | null>(null);
 
   useEffect(() => {
     const urlMatch = window.location.pathname.match(/^\/(\d{6})$/);
@@ -55,6 +56,15 @@ export default function App() {
       }
       setNicknameInput(session?.nickname || "");
       setPendingCode(code);
+      // 查询房主昵称
+      fetch(`${getHttpBase()}/api/rooms/${code}`)
+        .then((res) => res.json())
+        .then((info: { ownerName?: string }) => {
+          if (info.ownerName) {
+            setPendingOwnerName(info.ownerName);
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 
@@ -117,6 +127,12 @@ export default function App() {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div className="bg-white rounded-2xl p-8 w-full max-w-sm shadow-xl">
+          {pendingOwnerName && (
+            <div className="text-center mb-4">
+              <span className="text-indigo-600 font-bold">{pendingOwnerName}</span>
+              <span className="text-gray-600"> 邀请你一起玩俄罗斯方块</span>
+            </div>
+          )}
           <h3 className="text-lg font-bold text-gray-700 mb-4">
             输入昵称加入房间
           </h3>

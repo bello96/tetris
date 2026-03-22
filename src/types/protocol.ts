@@ -36,6 +36,7 @@ export interface S_RoomState {
   ownerId: string;
   phase: GamePhase;
   speed: number;
+  allowedTypes: number[];
   seed: number | null;
   gameStates: Record<string, PlayerGameState>;
   winner: { id: string; name: string } | null;
@@ -61,6 +62,7 @@ export interface S_GameStart {
   type: "gameStart";
   seed: number;
   speed: number;
+  allowedTypes: number[];
 }
 
 export interface S_BoardUpdate {
@@ -76,9 +78,10 @@ export interface S_BoardUpdate {
 
 export interface S_GameEnd {
   type: "gameEnd";
-  winnerId: string;
+  winnerId: string | null;
   winnerName: string;
   scores: Record<string, number>;
+  isDraw: boolean;
 }
 
 export interface S_ReadyChanged {
@@ -90,6 +93,7 @@ export interface S_ReadyChanged {
 export interface S_DifficultyChanged {
   type: "difficultyChanged";
   speed: number;
+  allowedTypes: number[];
 }
 
 export interface S_Error {
@@ -129,7 +133,8 @@ export interface C_Ready {
 
 export interface C_SetDifficulty {
   type: "setDifficulty";
-  speed: number;
+  speed?: number;
+  allowedTypes?: number[];
 }
 
 export interface C_StartGame {
@@ -150,6 +155,10 @@ export interface C_PlayAgain {
   type: "playAgain";
 }
 
+export interface C_TransferOwner {
+  type: "transferOwner";
+}
+
 export interface C_Leave {
   type: "leave";
 }
@@ -165,5 +174,6 @@ export type ClientMessage =
   | C_StartGame
   | C_UpdateBoard
   | C_PlayAgain
+  | C_TransferOwner
   | C_Leave
   | C_Ping;

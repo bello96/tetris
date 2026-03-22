@@ -21,15 +21,20 @@ export default function Home({ onEnterRoom, urlError }: Props) {
   const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [tip, setTip] = useState("");
 
-  const valid = nickname.trim().length > 0;
+  function clearTip() {
+    setTip("");
+  }
 
   async function createRoom() {
-    if (!valid) {
+    setTip("");
+    setError("");
+    if (!nickname.trim()) {
+      setTip("请输入昵称");
       return;
     }
     setLoading(true);
-    setError("");
     try {
       const res = await fetch(`${getHttpBase()}/api/rooms`, {
         method: "POST",
@@ -47,11 +52,21 @@ export default function Home({ onEnterRoom, urlError }: Props) {
   }
 
   async function joinRoom() {
-    if (!valid || joinCode.length !== 6) {
+    setTip("");
+    setError("");
+    if (!nickname.trim()) {
+      setTip("请输入昵称");
+      return;
+    }
+    if (!joinCode) {
+      setTip("请输入房间号");
+      return;
+    }
+    if (joinCode.length !== 6) {
+      setTip("房间号为6位数字");
       return;
     }
     setLoading(true);
-    setError("");
     try {
       const res = await fetch(`${getHttpBase()}/api/rooms/${joinCode}`);
       if (!res.ok) {
@@ -86,10 +101,18 @@ export default function Home({ onEnterRoom, urlError }: Props) {
           双人在线对战，同序方块，比拼实力
         </p>
 
-        {(error || urlError) && (
+        {error && (
           <div className="bg-red-50 text-red-600 px-4 py-2 rounded-lg mb-4 text-sm">
-            {error || urlError}
+            {error}
           </div>
+        )}
+        {urlError && !error && (
+          <div className="bg-red-50 text-red-600 px-4 py-2 rounded-lg mb-4 text-sm">
+            {urlError}
+          </div>
+        )}
+        {tip && (
+          <div className="text-red-500 text-sm mb-4">{tip}</div>
         )}
 
         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -100,13 +123,16 @@ export default function Home({ onEnterRoom, urlError }: Props) {
           placeholder="输入你的昵称"
           maxLength={12}
           value={nickname}
-          onChange={(e) => setNickname(e.target.value)}
+          onChange={(e) => {
+            setNickname(e.target.value);
+            clearTip();
+          }}
         />
 
         <button
-          className="w-full py-3 px-4 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 mb-6"
-          disabled={!valid || loading}
+          className="w-full py-3 px-4 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition mb-6"
           onClick={createRoom}
+          disabled={loading}
         >
           {loading ? "请稍候..." : "创建房间"}
         </button>
@@ -122,7 +148,10 @@ export default function Home({ onEnterRoom, urlError }: Props) {
           placeholder="房间号"
           maxLength={6}
           value={joinCode}
-          onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, ""))}
+          onChange={(e) => {
+            setJoinCode(e.target.value.replace(/\D/g, ""));
+            clearTip();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               joinRoom();
@@ -130,9 +159,9 @@ export default function Home({ onEnterRoom, urlError }: Props) {
           }}
         />
         <button
-          className="w-full py-3 px-4 bg-white text-indigo-600 font-semibold rounded-lg border-2 border-indigo-600 hover:bg-indigo-50 transition disabled:opacity-50"
-          disabled={!valid || joinCode.length !== 6 || loading}
+          className="w-full py-3 px-4 bg-white text-indigo-600 font-semibold rounded-lg border-2 border-indigo-600 hover:bg-indigo-50 transition"
           onClick={joinRoom}
+          disabled={loading}
         >
           加入房间
         </button>

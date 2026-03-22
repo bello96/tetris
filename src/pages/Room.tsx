@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getHttpBase, getWsBase } from "../api";
 import Confetti from "../components/Confetti";
 import NextPiece from "../components/NextPiece";
+import PieceThumbnail from "../components/PieceThumbnail";
 import PlayerBar from "../components/PlayerBar";
 import TetrisBoard from "../components/TetrisBoard";
 import { useWebSocket } from "../hooks/useWebSocket";
@@ -20,6 +21,7 @@ import {
   getSpawnPosition,
   isValidPosition,
   lockPiece,
+  PIECE_NAMES,
   tryRotate,
 } from "../utils/tetris";
 
@@ -44,6 +46,7 @@ export default function Room({
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [phase, setPhase] = useState<GamePhase>("waiting");
   const [speed, setSpeed] = useState(3);
+  const [allowedTypes, setAllowedTypes] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [seed, setSeed] = useState<number | null>(null);
   const [winner, setWinner] = useState<{
     id: string;
@@ -51,6 +54,7 @@ export default function Room({
   } | null>(null);
   const [scores, setScores] = useState<Record<string, number>>({});
   const [showConfetti, setShowConfetti] = useState(false);
+  const [showEndDialog, setShowEndDialog] = useState(false);
 
   /* ── 我的游戏状态 ── */
   const [myBoard, setMyBoard] = useState<number[][]>(createBoard);
@@ -71,7 +75,7 @@ export default function Room({
   const seqRef = useRef<number[]>([]);
   const pieceIndexRef = useRef(0);
   const fastDropRef = useRef(false);
-  const [fastDrop, setFastDrop] = useState(false);
+  const [, setFastDrop] = useState(false);
 
   // Refs 用于在回调中读取最新值
   const myBoardRef = useRef(myBoard);
@@ -88,6 +92,8 @@ export default function Room({
   myNextTypeRef.current = myNextType;
   const speedRef = useRef(speed);
   speedRef.current = speed;
+  const allowedTypesRef = useRef(allowedTypes);
+  allowedTypesRef.current = allowedTypes;
   const myIdRef = useRef(myId);
   myIdRef.current = myId;
   const playerIdRef = useRef(playerId);
@@ -132,7 +138,7 @@ export default function Room({
     // 按需扩展序列
     while (seqRef.current.length <= idx + 1) {
       if (rngRef.current) {
-        const more = generatePieceSequence(rngRef.current, 70);
+        const more = generatePieceSequence(rngRef.current, 70, allowedTypesRef.current);
         seqRef.current.push(...more);
       }
     }
@@ -148,12 +154,10 @@ export default function Room({
       setMyGameOver(true);
       setMyPiece(null);
       setMyNextType(nextType);
-      // 延迟发送，确保状态更新
-      setTimeout(() => {
-        myGameOverRef.current = true;
-        myPieceRef.current = null;
-        sendBoardUpdate();
-      }, 0);
+      myGameOverRef.current = true;
+      myPieceRef.current = null;
+      myNextTypeRef.current = nextType;
+      sendBoardUpdate();
       return;
     }
 
@@ -202,22 +206,49 @@ export default function Room({
       myPieceRef.current = null;
 
       sendBoardUpdate();
-
-      // 生成下一块
-      setTimeout(() => spawnPiece(), 10);
+      spawnPiece();
     }
   }, [spawnPiece, sendBoardUpdate]);
 
-  /* ── 游戏循环 ── */
+  /* ── 游戏循环（确定性时间驱动） ── */
   useEffect(() => {
-    if (phase !== "playing" || myGameOver || seed === null) {
+    if (phase !== "playing" || seed === null) {
       return;
     }
 
-    const interval = fastDrop ? FAST_DROP_INTERVAL : getDropInterval(speed);
-    const timer = setInterval(tick, interval);
-    return () => clearInterval(timer);
-  }, [phase, myGameOver, seed, speed, fastDrop, tick]);
+    let lastDropTime = performance.now();
+    let animId: number;
+    let running = true;
+
+    function loop() {
+      if (!running || phaseRef.current !== "playing" || myGameOverRef.current) {
+        return;
+      }
+
+      const now = performance.now();
+      const interval = fastDropRef.current
+        ? FAST_DROP_INTERVAL
+        : getDropInterval(speedRef.current);
+
+      if (now - lastDropTime >= interval) {
+        // 按精确间隔推进，防止漂移
+        lastDropTime += interval;
+        // 如果落后太多（如切后台回来），重置而非疯狂追赶
+        if (now - lastDropTime > interval * 2) {
+          lastDropTime = now;
+        }
+        tick();
+      }
+
+      animId = requestAnimationFrame(loop);
+    }
+
+    animId = requestAnimationFrame(loop);
+    return () => {
+      running = false;
+      cancelAnimationFrame(animId);
+    };
+  }, [phase, seed, tick]);
 
   /* ── 键盘控制 ── */
   useEffect(() => {
@@ -277,41 +308,7 @@ export default function Room({
           break;
         }
         case "ArrowUp": {
-          // 硬降落（直接落到底部）
-          e.preventDefault();
-          let dropRow = piece.row;
-          while (
-            isValidPosition(
-              board,
-              piece.type,
-              piece.rotation,
-              dropRow + 1,
-              piece.col,
-            )
-          ) {
-            dropRow++;
-          }
-          // 直接锁定
-          const newBoard = lockPiece(
-            board,
-            piece.type,
-            piece.rotation,
-            dropRow,
-            piece.col,
-          );
-          const [clearedBoard, lines] = clearLines(newBoard);
-          const newScore = myScoreRef.current + lines;
-          setMyBoard(clearedBoard);
-          setMyScore(newScore);
-          setMyPiece(null);
-          myBoardRef.current = clearedBoard;
-          myScoreRef.current = newScore;
-          myPieceRef.current = null;
-          sendBoardUpdate();
-          setTimeout(() => spawnPiece(), 10);
-          break;
-        }
-        case " ": {
+          // 旋转
           e.preventDefault();
           const result = tryRotate(
             board,
@@ -331,6 +328,40 @@ export default function Room({
             myPieceRef.current = np;
             sendBoardUpdate();
           }
+          break;
+        }
+        case " ": {
+          // 硬降落（直接落到底部）
+          e.preventDefault();
+          let dropRow = piece.row;
+          while (
+            isValidPosition(
+              board,
+              piece.type,
+              piece.rotation,
+              dropRow + 1,
+              piece.col,
+            )
+          ) {
+            dropRow++;
+          }
+          const newBoard = lockPiece(
+            board,
+            piece.type,
+            piece.rotation,
+            dropRow,
+            piece.col,
+          );
+          const [clearedBoard, lines] = clearLines(newBoard);
+          const newScore = myScoreRef.current + lines;
+          setMyBoard(clearedBoard);
+          setMyScore(newScore);
+          setMyPiece(null);
+          myBoardRef.current = clearedBoard;
+          myScoreRef.current = newScore;
+          myPieceRef.current = null;
+          sendBoardUpdate();
+          spawnPiece();
           break;
         }
       }
@@ -353,10 +384,13 @@ export default function Room({
 
   /* ── 开始游戏初始化 ── */
   const startGame = useCallback(
-    (gameSeed: number) => {
+    (gameSeed: number, types?: number[]) => {
+      const gameTypes = types && types.length > 0 ? types : allowedTypesRef.current;
+      allowedTypesRef.current = gameTypes;
+      setAllowedTypes(gameTypes);
       const rng = createRNG(gameSeed);
       rngRef.current = rng;
-      seqRef.current = generatePieceSequence(rng, 70);
+      seqRef.current = generatePieceSequence(rng, 70, gameTypes);
       pieceIndexRef.current = 0;
       fastDropRef.current = false;
       setFastDrop(false);
@@ -378,8 +412,7 @@ export default function Room({
       myScoreRef.current = 0;
       myGameOverRef.current = false;
 
-      // 稍后生成第一块
-      setTimeout(() => spawnPiece(), 100);
+      spawnPiece();
     },
     [spawnPiece],
   );
@@ -397,6 +430,8 @@ export default function Room({
           phaseRef.current = msg.phase;
           setSpeed(msg.speed);
           speedRef.current = msg.speed;
+          setAllowedTypes(msg.allowedTypes);
+          allowedTypesRef.current = msg.allowedTypes;
           setSeed(msg.seed);
           setWinner(msg.winner);
           // 恢复游戏状态（断线重连）
@@ -417,10 +452,10 @@ export default function Room({
             if (msg.seed !== null && msg.phase === "playing") {
               const rng = createRNG(msg.seed);
               rngRef.current = rng;
-              // 生成足够多的序列以匹配当前进度
               seqRef.current = generatePieceSequence(
                 rng,
                 Math.max(70, myState.pieceIndex + 20),
+                msg.allowedTypes,
               );
             }
           }
@@ -460,6 +495,9 @@ export default function Room({
           setPhase(msg.phase);
           phaseRef.current = msg.phase;
           setOwnerId(msg.ownerId);
+          if (msg.phase === "readying") {
+            setShowEndDialog(false);
+          }
           break;
         case "gameStart":
           setPhase("playing");
@@ -467,7 +505,7 @@ export default function Room({
           setSeed(msg.seed);
           setSpeed(msg.speed);
           speedRef.current = msg.speed;
-          startGame(msg.seed);
+          startGame(msg.seed, msg.allowedTypes);
           break;
         case "boardUpdate":
           if (msg.playerId !== myIdRef.current) {
@@ -481,9 +519,20 @@ export default function Room({
         case "gameEnd":
           setPhase("ended");
           phaseRef.current = "ended";
-          setWinner({ id: msg.winnerId, name: msg.winnerName });
+          setShowEndDialog(true);
+          if (msg.isDraw) {
+            setWinner({ id: "__draw__", name: "" });
+          } else {
+            setWinner(
+              msg.winnerId
+                ? { id: msg.winnerId, name: msg.winnerName }
+                : null,
+            );
+          }
           setScores(msg.scores);
-          setShowConfetti(msg.winnerId === myIdRef.current);
+          setShowConfetti(
+            !msg.isDraw && msg.winnerId === myIdRef.current,
+          );
           if (confettiTimerRef.current) {
             clearTimeout(confettiTimerRef.current);
           }
@@ -502,6 +551,8 @@ export default function Room({
         case "difficultyChanged":
           setSpeed(msg.speed);
           speedRef.current = msg.speed;
+          setAllowedTypes(msg.allowedTypes);
+          allowedTypesRef.current = msg.allowedTypes;
           break;
         case "error":
           if (msg.message === "房间已满" || msg.message === "房间已关闭") {
@@ -565,15 +616,15 @@ export default function Room({
   /* ── 计算 cellSize ── */
   // 根据窗口大小动态计算，确保两个棋盘都能放下
   const cellSize = useMemo(() => {
-    // 留出顶部 PlayerBar (~60px) + 间距
-    const availableH = window.innerHeight - 120;
-    const availableW = window.innerWidth - 80;
-    // 每个棋盘占一半宽度，减去侧边栏和间距
-    const halfW = (availableW - 60) / 2;
-    const boardW = halfW - 100; // 减去 next/score 面板
+    // 高度留足上下边距，不要顶到头
+    const availableH = window.innerHeight - 180;
+    // 宽度尽量用满
+    const availableW = window.innerWidth - 40;
+    const halfW = (availableW - 30) / 2;
+    const boardW = halfW - 80;
     const fromW = Math.floor(boardW / 10);
     const fromH = Math.floor(availableH / 20);
-    return Math.max(16, Math.min(fromW, fromH, 32));
+    return Math.max(20, Math.min(fromW, fromH));
   }, []);
 
   /* ── 渲染 ── */
@@ -589,6 +640,7 @@ export default function Room({
           ownerId={ownerId}
           myId={myId}
           phase={phase}
+          onTransferOwner={() => send({ type: "transferOwner" })}
           onLeave={handleLeave}
         />
         <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm">
@@ -621,35 +673,102 @@ export default function Room({
           ownerId={ownerId}
           myId={myId}
           phase={phase}
+          onTransferOwner={() => send({ type: "transferOwner" })}
           onLeave={handleLeave}
         />
         <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm">
           <div className="text-center w-full max-w-md px-8">
             <div className="text-3xl mb-6">🎮 准备对战</div>
 
-            {/* 难度设置 - 仅房主 */}
+            {/* 难度设置 - 仅房主且未全部准备 */}
             <div className="mb-6">
               <div className="text-sm text-gray-500 mb-2">
-                下落速度 {isOwner ? "(房主可调整)" : ""}
+                下落速度 {isOwner && !allReady ? "(房主可调整)" : ""}
               </div>
               <div className="flex items-center justify-center gap-1">
-                {Array.from({ length: 10 }, (_, i) => i + 1).map((s) => (
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((s) => {
+                  const canEdit = isOwner && !allReady;
+                  return (
                   <button
                     key={s}
                     className={`w-9 h-9 rounded-lg text-sm font-medium transition ${
                       s === speed
-                        ? "bg-indigo-600 text-white"
-                        : isOwner
+                        ? canEdit
+                          ? "bg-indigo-600 text-white"
+                          : "bg-indigo-300 text-white"
+                        : canEdit
                           ? "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                          : "bg-gray-50 text-gray-400"
+                          : "bg-gray-50 text-gray-300"
                     }`}
-                    disabled={!isOwner}
+                    disabled={!canEdit}
                     onClick={() => handleSetSpeed(s)}
                   >
                     {s}
                   </button>
-                ))}
+                  );
+                })}
               </div>
+            </div>
+
+            {/* 方块选择 - 仅房主且未全部准备 */}
+            <div className="mb-6">
+              <div className="text-sm text-gray-500 mb-2">
+                出场方块 {isOwner && !allReady ? "(房主可调整)" : ""}
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                {PIECE_NAMES.map((_name, idx) => {
+                  const selected = allowedTypes.includes(idx);
+                  const canEdit = isOwner && !allReady;
+                  return (
+                    <button
+                      key={idx}
+                      className={`rounded-lg transition border-2 p-1 ${
+                        selected
+                          ? canEdit
+                            ? "border-indigo-400 bg-white"
+                            : "border-indigo-300 bg-white"
+                          : canEdit
+                            ? "border-gray-200 bg-gray-50 hover:border-gray-300"
+                            : "border-gray-100 bg-gray-50"
+                      }`}
+                      disabled={!canEdit}
+                      onClick={() => {
+                        let next: number[];
+                        if (selected) {
+                          next = allowedTypes.filter((t) => t !== idx);
+                          if (next.length === 0) {
+                            return;
+                          }
+                        } else {
+                          next = [...allowedTypes, idx].sort();
+                        }
+                        setAllowedTypes(next);
+                        send({ type: "setDifficulty", allowedTypes: next });
+                      }}
+                    >
+                      <PieceThumbnail
+                        typeIndex={idx}
+                        size={40}
+                        dimmed={!selected}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+              {isOwner && !allReady && (
+                <div className="flex justify-center gap-3 mt-2">
+                  <button
+                    className="text-xs text-indigo-500 hover:text-indigo-700 transition"
+                    onClick={() => {
+                      const all = [0, 1, 2, 3, 4, 5, 6];
+                      setAllowedTypes(all);
+                      send({ type: "setDifficulty", allowedTypes: all });
+                    }}
+                  >
+                    全选
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 玩家准备状态 */}
@@ -718,8 +837,8 @@ export default function Room({
               <div className="text-xs text-gray-500 space-y-1">
                 <div>← → 左右移动</div>
                 <div>↓ 按住加速下落</div>
-                <div>↑ 硬降落（直接到底）</div>
-                <div>空格 旋转方块</div>
+                <div>↑ 旋转方块</div>
+                <div>空格 硬降落（直接到底）</div>
               </div>
             </div>
           </div>
@@ -738,6 +857,8 @@ export default function Room({
         ownerId={ownerId}
         myId={myId}
         phase={phase}
+        onPlayAgain={handlePlayAgain}
+        onTransferOwner={() => send({ type: "transferOwner" })}
         onLeave={handleLeave}
       />
 
@@ -769,35 +890,77 @@ export default function Room({
       </div>
 
       {/* 游戏结束弹窗 */}
-      {phase === "ended" && winner && (
+      {phase === "ended" && winner && showEndDialog && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40">
-          <div className="bg-white rounded-2xl p-8 w-full max-w-sm shadow-xl text-center">
+          <div className="bg-white rounded-2xl p-8 w-full max-w-sm shadow-xl text-center relative">
+            {/* 关闭按钮 */}
+            <button
+              className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition text-sm"
+              onClick={() => setShowEndDialog(false)}
+            >
+              ×
+            </button>
             <div className="text-4xl mb-3">
-              {winner.id === myId ? "🎉" : "😢"}
+              {winner.id === "__draw__"
+                ? "🤝"
+                : winner.id === myId
+                  ? "🎉"
+                  : "😢"}
             </div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">
-              {winner.id === myId ? "你赢了！" : `${winner.name} 获胜`}
+              {winner.id === "__draw__"
+                ? "平局！"
+                : winner.id === myId
+                  ? "你赢了！"
+                  : `${winner.name} 获胜`}
             </h2>
-            <div className="text-gray-500 mb-4">
+            <div className="text-gray-500 mb-1">
               {players.map((p) => (
                 <span key={p.id} className="mx-2">
                   {p.name}: {scores[p.id] ?? 0} 分
                 </span>
               ))}
             </div>
-            {isOwner && (
-              <button
-                className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition"
-                onClick={handlePlayAgain}
-              >
-                再来一局
-              </button>
+            {winner.id !== "__draw__" && winner.id !== myId && (
+              <p className="text-sm text-gray-400 mb-4">
+                对方存活更久，你先堆满了
+              </p>
             )}
-            {!isOwner && (
-              <p className="text-sm text-gray-400">等待房主开始新一局...</p>
+            {winner.id === "__draw__" && (
+              <p className="text-sm text-gray-400 mb-4">
+                双方分数相同，势均力敌
+              </p>
             )}
+            {winner.id === myId && (
+              <p className="text-sm text-gray-400 mb-4">
+                对方先堆满了，你获胜
+              </p>
+            )}
+            <div className="flex items-center justify-center gap-3">
+              {isOwner && (
+                <button
+                  className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition"
+                  onClick={handlePlayAgain}
+                >
+                  再来一局
+                </button>
+              )}
+              {!isOwner && (
+                <p className="text-sm text-gray-400">等待房主开始新一局...</p>
+              )}
+            </div>
           </div>
         </div>
+      )}
+
+      {/* 弹窗关闭后，底部显示重新查看结果按钮 */}
+      {phase === "ended" && winner && !showEndDialog && (
+        <button
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 px-4 py-2 bg-white text-gray-600 text-sm rounded-full shadow-lg hover:shadow-xl transition border border-gray-200"
+          onClick={() => setShowEndDialog(true)}
+        >
+          查看对局结果
+        </button>
       )}
     </div>
   );

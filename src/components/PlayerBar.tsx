@@ -7,6 +7,8 @@ interface Props {
   ownerId: string | null;
   myId: string | null;
   phase: GamePhase;
+  onPlayAgain?: () => void;
+  onTransferOwner: () => void;
   onLeave: () => void;
 }
 
@@ -30,6 +32,8 @@ export default function PlayerBar({
   ownerId,
   myId,
   phase,
+  onPlayAgain,
+  onTransferOwner,
   onLeave,
 }: Props) {
   const [copied, setCopied] = useState(false);
@@ -46,8 +50,9 @@ export default function PlayerBar({
   }
 
   return (
-    <div className="flex items-center justify-between p-3 bg-white rounded-xl shadow-sm">
-      <div className="flex items-center gap-4">
+    <div className="flex items-center p-3 bg-white rounded-xl shadow-sm">
+      {/* 左：房间信息 - 靠左 */}
+      <div className="flex-1 flex items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-500">房间</span>
           <span className="font-mono text-lg font-bold text-indigo-600 tracking-wider">
@@ -76,7 +81,8 @@ export default function PlayerBar({
         </span>
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* 中：玩家列表 - 居中，占两份 */}
+      <div className="flex-[2] flex items-center justify-center gap-2">
         {players.map((p) => (
           <div
             key={p.id}
@@ -100,23 +106,35 @@ export default function PlayerBar({
             {p.id === ownerId && (
               <span className="text-[10px] opacity-60">房主</span>
             )}
-            {phase === "readying" && (
-              <span
-                className={`text-[10px] ${p.ready ? "text-green-600" : "text-gray-400"}`}
-              >
-                {p.ready ? "已准备" : "未准备"}
-              </span>
-            )}
           </div>
         ))}
       </div>
 
-      <button
-        className="px-3 py-1.5 text-sm rounded-lg transition bg-gray-100 text-gray-600 hover:bg-gray-200"
-        onClick={onLeave}
-      >
-        离开
-      </button>
+      {/* 右：操作按钮 - 靠右 */}
+      <div className="flex-1 flex items-center justify-end gap-2">
+        {myId === ownerId && phase === "ended" && onPlayAgain && (
+          <button
+            className="px-3 py-1.5 text-sm rounded-lg transition bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+            onClick={onPlayAgain}
+          >
+            再来一局
+          </button>
+        )}
+        {myId === ownerId && players.length === 2 && phase !== "playing" && (
+          <button
+            className="px-3 py-1.5 text-sm rounded-lg transition bg-amber-50 text-amber-700 hover:bg-amber-100"
+            onClick={onTransferOwner}
+          >
+            转让房主
+          </button>
+        )}
+        <button
+          className="px-3 py-1.5 text-sm rounded-lg transition bg-gray-100 text-gray-600 hover:bg-gray-200"
+          onClick={onLeave}
+        >
+          离开
+        </button>
+      </div>
     </div>
   );
 }

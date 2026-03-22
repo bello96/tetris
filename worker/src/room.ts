@@ -53,6 +53,7 @@ export class TetrisRoom extends DurableObject {
   private phase: GamePhase = "waiting";
   private ownerId: string | null = null;
   private speed = 3;
+  private allowedTypes: number[] = [0, 1, 2, 3, 4, 5, 6];
   private seed: number | null = null;
   private lastActivityAt = 0;
   private disconnectedPlayers = new Map<string, DisconnectedPlayer>();
@@ -75,6 +76,7 @@ export class TetrisRoom extends DurableObject {
       "phase",
       "ownerId",
       "speed",
+      "allowedTypes",
       "seed",
       "lastActivityAt",
       "playerReady",
@@ -88,6 +90,7 @@ export class TetrisRoom extends DurableObject {
     this.phase = (data.get("phase") as GamePhase) || "waiting";
     this.ownerId = (data.get("ownerId") as string) || null;
     this.speed = (data.get("speed") as number) || 3;
+    this.allowedTypes = (data.get("allowedTypes") as number[]) || [0, 1, 2, 3, 4, 5, 6];
     this.seed = (data.get("seed") as number) || null;
     this.lastActivityAt =
       (data.get("lastActivityAt") as number) || Date.now();
@@ -144,11 +147,14 @@ export class TetrisRoom extends DurableObject {
     }
 
     if (url.pathname === "/info" && request.method === "GET") {
+      const players = this.getActivePlayers();
+      const owner = players.find((p) => p.id === this.ownerId);
       return Response.json({
         roomCode: this.roomCode,
         phase: this.phase,
-        playerCount: this.getActivePlayers().length,
+        playerCount: players.length,
         closed: this.closed,
+        ownerName: owner?.name || null,
       });
     }
 
@@ -196,7 +202,7 @@ export class TetrisRoom extends DurableObject {
         await this.onReady(att);
         break;
       case "setDifficulty":
-        await this.onSetDifficulty(att, msg.speed as number);
+        await this.onSetDifficulty(att, msg);
         break;
       case "startGame":
         await this.onStartGame(att);
@@ -206,6 +212,9 @@ export class TetrisRoom extends DurableObject {
         break;
       case "playAgain":
         await this.onPlayAgain(att);
+        break;
+      case "transferOwner":
+        await this.onTransferOwner(att);
         break;
       case "leave":
         await this.onLeave(ws, att);
@@ -329,13 +338,27 @@ export class TetrisRoom extends DurableObject {
     });
   }
 
-  private async onSetDifficulty(att: WsAttachment, speed: number) {
+  private async onSetDifficulty(att: WsAttachment, msg: Record<string, unknown>) {
     if (att.playerId !== this.ownerId || this.phase !== "readying") {
       return;
     }
-    this.speed = Math.max(1, Math.min(10, Math.floor(speed)));
-    await this.save({ speed: this.speed });
-    this.broadcast({ type: "difficultyChanged", speed: this.speed });
+    if (typeof msg.speed === "number") {
+      this.speed = Math.max(1, Math.min(10, Math.floor(msg.speed)));
+    }
+    if (Array.isArray(msg.allowedTypes) && msg.allowedTypes.length > 0) {
+      this.allowedTypes = (msg.allowedTypes as number[]).filter(
+        (t) => t >= 0 && t <= 6,
+      );
+      if (this.allowedTypes.length === 0) {
+        this.allowedTypes = [0, 1, 2, 3, 4, 5, 6];
+      }
+    }
+    await this.save({ speed: this.speed, allowedTypes: this.allowedTypes });
+    this.broadcast({
+      type: "difficultyChanged",
+      speed: this.speed,
+      allowedTypes: this.allowedTypes,
+    });
   }
 
   private async onStartGame(att: WsAttachment) {
@@ -367,6 +390,7 @@ export class TetrisRoom extends DurableObject {
       type: "gameStart",
       seed: this.seed,
       speed: this.speed,
+      allowedTypes: this.allowedTypes,
     });
   }
 
@@ -403,6 +427,9 @@ export class TetrisRoom extends DurableObject {
   }
 
   private async checkGameEnd() {
+    if (this.phase !== "playing") {
+      return;
+    }
     const players = this.getActivePlayers();
     const gameOverPlayers: string[] = [];
 
@@ -420,18 +447,25 @@ export class TetrisRoom extends DurableObject {
     // 有人失败了，找出赢家
     let winnerId: string | null = null;
     let winnerName = "";
+    let isDraw = false;
 
     if (gameOverPlayers.length >= players.length) {
       // 所有人都失败了，比分数
-      let maxScore = -1;
-      for (const p of players) {
-        const gs = this.playerGameStates.get(p.id);
-        const score = gs?.score ?? 0;
-        if (score > maxScore) {
-          maxScore = score;
-          winnerId = p.id;
-          winnerName = p.name;
-        }
+      const playerScores = players.map((p) => ({
+        id: p.id,
+        name: p.name,
+        score: this.playerGameStates.get(p.id)?.score ?? 0,
+      }));
+      playerScores.sort((a, b) => b.score - a.score);
+      if (
+        playerScores.length >= 2 &&
+        playerScores[0]!.score === playerScores[1]!.score
+      ) {
+        // 平局
+        isDraw = true;
+      } else {
+        winnerId = playerScores[0]!.id;
+        winnerName = playerScores[0]!.name;
       }
     } else {
       // 还有人活着，活着的人赢
@@ -444,12 +478,8 @@ export class TetrisRoom extends DurableObject {
       }
     }
 
-    if (!winnerId) {
-      return;
-    }
-
     this.phase = "ended";
-    this.winner = { id: winnerId, name: winnerName };
+    this.winner = isDraw ? null : { id: winnerId!, name: winnerName };
 
     const scores: Record<string, number> = {};
     for (const p of players) {
@@ -466,6 +496,7 @@ export class TetrisRoom extends DurableObject {
       type: "gameEnd",
       winnerId,
       winnerName,
+      isDraw,
       scores,
     });
   }
@@ -504,6 +535,27 @@ export class TetrisRoom extends DurableObject {
     for (const [pid] of this.playerReady) {
       this.broadcast({ type: "readyChanged", playerId: pid, ready: false });
     }
+  }
+
+  private async onTransferOwner(att: WsAttachment) {
+    if (att.playerId !== this.ownerId) {
+      return;
+    }
+    if (this.phase === "playing") {
+      return;
+    }
+    const players = this.getActivePlayers();
+    const other = players.find((p) => p.id !== att.playerId);
+    if (!other) {
+      return;
+    }
+    this.ownerId = other.id;
+    await this.save({ ownerId: other.id });
+    this.broadcast({
+      type: "phaseChange",
+      phase: this.phase,
+      ownerId: this.ownerId,
+    });
   }
 
   private async onLeave(ws: WebSocket, att: WsAttachment) {
@@ -551,9 +603,11 @@ export class TetrisRoom extends DurableObject {
       this.phase = "ended";
       this.winner = { id: winner.id, name: winner.name };
       const scores: Record<string, number> = {};
+      // 包含所有玩家的分数（含已离开的）
       for (const p of remaining) {
         scores[p.id] = this.playerGameStates.get(p.id)?.score ?? 0;
       }
+      scores[removedId] = 0;
       await this.save({
         phase: "ended",
         winner: this.winner,
@@ -563,6 +617,7 @@ export class TetrisRoom extends DurableObject {
         type: "gameEnd",
         winnerId: winner.id,
         winnerName: winner.name,
+        isDraw: false,
         scores,
       });
       return;
@@ -698,6 +753,7 @@ export class TetrisRoom extends DurableObject {
       ownerId: this.ownerId,
       phase: this.phase,
       speed: this.speed,
+      allowedTypes: this.allowedTypes,
       seed: this.seed,
       gameStates,
       winner: this.winner,

@@ -3,12 +3,12 @@ import { PIECE_BORDERS, PIECE_COLORS, getPieceShape } from "../utils/tetris";
 
 interface Props {
   typeIndex: number;
-  cellSize: number;
+  size: number;
+  dimmed?: boolean;
 }
 
-export default function NextPiece({ typeIndex, cellSize }: Props) {
+export default function PieceThumbnail({ typeIndex, size, dimmed }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const size = cellSize * 4;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -21,8 +21,8 @@ export default function NextPiece({ typeIndex, cellSize }: Props) {
     canvas.height = size * dpr;
     ctx.scale(dpr, dpr);
 
-    ctx.fillStyle = "#f0f0f8";
-    ctx.fillRect(0, 0, size, size);
+    // 透明背景
+    ctx.clearRect(0, 0, size, size);
 
     const shape = getPieceShape(typeIndex);
     const colorIdx = typeIndex + 1;
@@ -32,11 +32,8 @@ export default function NextPiece({ typeIndex, cellSize }: Props) {
       return;
     }
 
-    // 居中绘制
-    let minR = 4,
-      maxR = 0,
-      minC = 4,
-      maxC = 0;
+    // 计算 bounding box
+    let minR = 4, maxR = 0, minC = 4, maxC = 0;
     for (const [r, c] of shape) {
       minR = Math.min(minR, r);
       maxR = Math.max(maxR, r);
@@ -45,29 +42,44 @@ export default function NextPiece({ typeIndex, cellSize }: Props) {
     }
     const pieceW = maxC - minC + 1;
     const pieceH = maxR - minR + 1;
+
+    // 单元格大小，留一点 padding
+    const padding = size * 0.1;
+    const cellSize = Math.min(
+      (size - padding * 2) / pieceW,
+      (size - padding * 2) / pieceH,
+    );
     const offsetX = (size - pieceW * cellSize) / 2;
     const offsetY = (size - pieceH * cellSize) / 2;
+
+    ctx.globalAlpha = dimmed ? 0.25 : 1;
 
     for (const [r, c] of shape) {
       const x = offsetX + (c - minC) * cellSize;
       const y = offsetY + (r - minR) * cellSize;
-      const inset = 1;
+      const inset = Math.max(0.5, cellSize * 0.06);
 
+      // 主体
       ctx.fillStyle = color;
-      ctx.fillRect(x + inset, y + inset, cellSize - 2, cellSize - 2);
-      ctx.fillStyle = "rgba(255,255,255,0.2)";
-      ctx.fillRect(x + inset, y + inset, cellSize - 2, 2);
-      ctx.fillRect(x + inset, y + inset, 2, cellSize - 2);
+      ctx.fillRect(x + inset, y + inset, cellSize - inset * 2, cellSize - inset * 2);
+      // 高光
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.fillRect(x + inset, y + inset, cellSize - inset * 2, Math.max(1, cellSize * 0.12));
+      ctx.fillRect(x + inset, y + inset, Math.max(1, cellSize * 0.12), cellSize - inset * 2);
+      // 阴影
       ctx.fillStyle = border;
-      ctx.fillRect(x + inset, y + cellSize - inset - 2, cellSize - 2, 2);
-      ctx.fillRect(x + cellSize - inset - 2, y + inset, 2, cellSize - 2);
+      const sh = Math.max(1, cellSize * 0.12);
+      ctx.fillRect(x + inset, y + cellSize - inset - sh, cellSize - inset * 2, sh);
+      ctx.fillRect(x + cellSize - inset - sh, y + inset, sh, cellSize - inset * 2);
     }
-  }, [typeIndex, cellSize, size]);
+
+    ctx.globalAlpha = 1;
+  }, [typeIndex, size, dimmed]);
 
   return (
     <canvas
       ref={canvasRef}
-      style={{ width: size, height: size, borderRadius: 4 }}
+      style={{ width: size, height: size, display: "block" }}
     />
   );
 }

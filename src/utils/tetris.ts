@@ -174,14 +174,21 @@ export function getSpawnPosition(): { row: number; col: number } {
   return { row: 0, col: 3 };
 }
 
-/** 7-bag 随机序列生成 */
+/** 方块名称 */
+export const PIECE_NAMES = ["I", "O", "T", "S", "Z", "J", "L"] as const;
+
+/** bag 随机序列生成，支持自定义可用方块类型 */
 export function generatePieceSequence(
   rng: () => number,
   count: number,
+  allowedTypes?: number[],
 ): number[] {
+  const types = allowedTypes && allowedTypes.length > 0
+    ? allowedTypes
+    : [0, 1, 2, 3, 4, 5, 6];
   const sequence: number[] = [];
   while (sequence.length < count) {
-    const bag = [0, 1, 2, 3, 4, 5, 6];
+    const bag = [...types];
     for (let i = bag.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
       [bag[i], bag[j]] = [bag[j]!, bag[i]!];
